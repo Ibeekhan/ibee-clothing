@@ -1,0 +1,237 @@
+// ============================================
+// IBEE CLOTHING — DATABASE SCHEMA
+// ============================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// NOTE: run `npx prisma generate` after installing dependencies, and
+// `npx prisma migrate dev --name init` once DATABASE_URL points at a real Postgres DB.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  COD // Cash on Delivery — only method at launch
+  // future methods (e.g. CARD, EASYPAISA) get added here without touching Order/OrderItem
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+// ============================================
+// AUTH / USER
+// ============================================
+
+// User = login identity (email + hashed password). Kept separate from
+// Customer so admin accounts don't carry storefront-only fields.
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  role          Role      @default(CUSTOMER)
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  customer Customer?
+
+  @@map("users")
+}
+
+// Customer = storefront profile data (name, phone) linked 1:1 to a User.
+model Customer {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName  String
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  addresses Address[]
+  orders    Order[]
+  cart      Cart?
+
+  @@map("customers")
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  fullName   String
+  phone      String
+  province   String
+  city       String
+  addressLine String
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  orders Order[]
+
+  @@map("addresses")
+}
+
+// ============================================
+// CATALOG
+// ============================================
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  categoryId      String
+  category        Category @relation(fields: [categoryId], references: [id])
+  name            String
+  slug            String   @unique
+  description     String
+  basePrice       Decimal  @db.Decimal(10, 2)
+  salePrice       Decimal? @db.Decimal(10, 2)
+  isFeatured      Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  seoTitle        String?
+  seoDescription  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  images   ProductImage[]
+  variants ProductVariant[]
+
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String   // points to Cloudinary/UploadThing, not stored in DB
+  altText   String?
+  position  Int      @default(0)
+
+  @@map("product_images")
+}
+
+// One row per size/color combination — this is where stock actually lives.
+model ProductVariant {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  size      String   // e.g. "S", "M", "L", "XL"
+  color     String   // e.g. "Black", "White"
+  sku       String   @unique
+  stock     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@unique([productId, size, color])
+  @@map("product_variants")
+}
+
+// ============================================
+// CART
+// ============================================
+
+model Cart {
+  id         String   @id @default(cuid())
+  customerId String   @unique
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  updatedAt  DateTime @updatedAt
+
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String         @id @default(cuid())
+  cartId    String
+  cart      Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+  quantity  Int            @default(1)
+  createdAt DateTime       @default(now())
+
+  @@unique([cartId, variantId])
+  @@map("cart_items")
+}
+
+// ============================================
+// ORDERS
+// ============================================
+
+model Order {
+  id            String        @id @default(cuid())
+  orderNumber   String        @unique // human-readable, e.g. "IBEE-00001"
+  customerId    String
+  customer      Customer      @relation(fields: [customerId], references: [id])
+  addressId     String
+  address       Address       @relation(fields: [addressId], references: [id])
+  paymentMethod PaymentMethod @default(COD)
+  paymentStatus PaymentStatus @default(PENDING)
+  status        OrderStatus   @default(PENDING)
+  subtotal      Decimal       @db.Decimal(10, 2)
+  total         Decimal       @db.Decimal(10, 2)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  items OrderItem[]
+
+  @@map("orders")
+}
+
+// Snapshot table: price/size/color are copied at purchase time so that
+// later product edits never change historical order records.
+model OrderItem {
+  id             String         @id @default(cuid())
+  orderId        String
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId      String
+  variant        ProductVariant @relation(fields: [variantId], references: [id])
+  productName    String         // snapshot
+  size           String         // snapshot
+  color          String         // snapshot
+  priceAtPurchase Decimal       @db.Decimal(10, 2)
+  quantity       Int
+
+  @@map("order_items")
+}

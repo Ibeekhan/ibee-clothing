@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+:root {
+  --color-ink: #111111;       /* near-black — primary text/bg */
+  --color-charcoal: #2b2b2b;
+  --color-paper: #f7f5f1;     /* off-white background */
+  --color-line: #e4e0d8;      /* hairline borders */
+  --color-accent: #a8763e;    /* single restrained accent — warm brass */
+  --color-error: #b3261e;
+  --color-success: #2e6b3e;
+}
+
+@theme inline {
+  --color-ink: var(--color-ink);
+  --color-charcoal: var(--color-charcoal);
+  --color-paper: var(--color-paper);
+  --color-line: var(--color-line);
+  --color-accent: var(--color-accent);
+  --color-error: var(--color-error);
+  --color-success: var(--color-success);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* Large, confident editorial headings used across the storefront */
+.ibee-heading {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.ibee-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-charcoal);
+}
+
+.ibee-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
